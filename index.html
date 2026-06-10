@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>小皮 - GitHub 視覺原型</title>
+  <title>小昕豬學習小助手</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
@@ -24,8 +24,8 @@
 <body>
   <div class="card">
     <div class="text-center mb-6">
-      <div class="text-3xl">🧸 小皮 - GitHub 視覺原型</div>
-      <p class="text-sm text-gray-600 mt-1">上傳學校通告圖片（JPG/PNG）或 PDF，系統會嘗試擷取內容並由小皮用廣東話朗讀。</p>
+      <div class="text-3xl">🐷 小昕豬學習小助手</div>
+      <p class="text-sm text-gray-600 mt-1">我是你的 AI 小夥伴小昕豬！上傳學校通告圖片（JPG/PNG）或 PDF，系統會嘗試擷取內容並由小昕豬用活潑廣東話朗讀。</p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -79,7 +79,7 @@
         </div>
 
         <div class="mb-4">
-          <div class="font-semibold">小皮的提醒</div>
+          <div class="font-semibold">小昕豬的提醒</div>
           <div id="resultBox" class="mt-2 p-3 rounded-lg bg-gray-50 min-h-[80px]"></div>
           <div id="debugPanel" class="mt-4 p-3 bg-gray-100 rounded hidden">
             <div class="font-semibold mb-2">🔎 診斷資訊（僅供調試）</div>
@@ -114,7 +114,7 @@
     const VISION_API_URL = 'https://models.inference.ai.azure.com/chat/completions';
     const VISION_MODEL = 'Llama-3.2-11b-Vision-Instruct';
 
-    const systemPrompt = `你是一個香港學校日程解析專家與智能玩具熊。請仔細觀看家長上傳的這張香港學校通告、手冊或校歷表圖片，自動提取出裡面的日期、時間、功課、默書或活動資訊。然後請切換身份為一隻 6 歲小朋友的玩具熊小皮，用極其溫柔、活潑的廣東話口語（多用「啊」、「喇」、「溫書」、「返學」等香港在地詞彙），草擬一段 50 字內的今日作息與溫習提醒。`;
+    const systemPrompt = `你是一個香港學校日程解析專家與智能玩具豬仔。請仔細觀看家長上傳的這張香港學校通告、手冊或校歷表圖片，自動提取出裡面的日期、時間、功課、默書或活動資訊。然後請切換身份為一隻 6 歲活潑、可愛的小女孩小昕豬，用極其活潑、語調輕快的廣東話口語（多用「啊」、「喇」、「溫書」、「返學」等香港在地詞彙），草擬一段 50 字內的今日作息與溫習提醒。`;
 
     // ===== DOM =====
     const apiKeyInput = document.getElementById('apiKey');
@@ -143,6 +143,7 @@
     let selectedFile = null;
     let lastBase64 = null;
     let audioUnlocked = false;
+    let preferredVoice = null;
 
     // iOS 音訊解鎖：在使用者第一個互動瞬間觸發空的語音，讓 Safari / iPhone 允許後續播放
     function unlockAudio(){
@@ -155,6 +156,34 @@
           console.warn('Audio unlock failed', e);
         }
       }
+    }
+
+    function loadPreferredVoice(){
+      const voices = window.speechSynthesis.getVoices() || [];
+      if(!voices.length) return;
+      preferredVoice = choosePreferredCantoneseVoice(voices);
+    }
+
+    function choosePreferredCantoneseVoice(voices){
+      if(!voices || !voices.length) return null;
+      const zhHkVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('zh-hk'));
+      const zhVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('zh'));
+      const rankVoice = v => {
+        const name = (v.name || '').toLowerCase();
+        let score = 0;
+        if(v.lang && v.lang.toLowerCase().startsWith('zh-hk')) score += 10;
+        if(v.localService) score += 5;
+        if(name.includes('female') || name.includes('girl') || name.includes('woman')) score += 3;
+        if(name.includes('mei') || name.includes('anna') || name.includes('sara') || name.includes('linda')) score += 2;
+        return score;
+      };
+      const choose = list => list.sort((a,b)=>rankVoice(b)-rankVoice(a))[0];
+      return choose(zhHkVoices) || choose(zhVoices) || voices[0];
+    }
+
+    if(window.speechSynthesis){
+      window.speechSynthesis.onvoiceschanged = loadPreferredVoice;
+      loadPreferredVoice();
     }
 
     // 自動清除前後空格並移除中間空白
@@ -432,8 +461,12 @@
         if(!window.speechSynthesis){ reject(new Error('瀏覽器不支援 speechSynthesis')); return; }
         const u = new SpeechSynthesisUtterance(text);
         u.lang = 'zh-HK';
-        u.rate = 0.9;
-        u.onstart = ()=>{ playStatus.textContent = '播放中...'; setStatus('小皮正在用廣東話朗讀'); };
+        u.pitch = 1.35;
+        u.rate = 1.08;
+        u.volume = 0.98;
+        const voice = preferredVoice || choosePreferredCantoneseVoice(window.speechSynthesis.getVoices() || []);
+        if(voice) u.voice = voice;
+        u.onstart = ()=>{ playStatus.textContent = '播放中...'; setStatus('小昕豬正在用活潑童音朗讀'); };
         u.onend = ()=>{ playStatus.textContent = '播放完畢'; setStatus('完成'); resolve(); };
         u.onerror = (e)=>{ playStatus.textContent = '播放錯誤'; setStatus('播放錯誤'); reject(e); };
         window.speechSynthesis.cancel();
