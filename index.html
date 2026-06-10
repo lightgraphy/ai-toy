@@ -31,8 +31,13 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div class="md:col-span-2">
         <label class="block mb-2 font-semibold">🔑 GitHub Token（以 ghp_ 開頭）</label>
-        <input id="apiKey" type="password" placeholder="請輸入您的 GitHub Token（或 Azure token）" class="w-full px-4 py-3 rounded-lg border border-gray-200 mb-3" autocomplete="off">
-        <p class="text-xs text-gray-500">自動清除前後空格；Token 嚴禁公開。GitHub 個人存取權杖通常以 <span class="font-medium">ghp_</span> 開頭。API 端點已預設為 Azure Models 地址。</p>
+        <div class="flex gap-2 mb-3 items-end">
+          <input id="apiKey" type="password" placeholder="請輸入您的 GitHub Token（或 Azure token）" class="flex-1 px-4 py-3 rounded-lg border border-gray-200" autocomplete="off">
+          <label class="inline-flex items-center text-xs text-gray-600 whitespace-nowrap">
+            <input id="rememberToken" type="checkbox" class="mr-2"> 記住我的密鑰
+          </label>
+        </div>
+        <p class="text-xs text-gray-500">自動清除前後空格；Token 嚴禁公開。GitHub 個人存取權杖通常以 <span class="font-medium">ghp_</span> 開頭。API 端點已預設為 Azure Models 地址。<br><span class="text-red-600 font-medium">⚠️ 勿在共享設備上勾選「記住我的密鑰」。</span></p>
 
         <div id="dropzone" class="dropzone mt-6">
           <div class="text-center">
@@ -87,6 +92,10 @@
               <button id="clearDebug" class="btn" style="background:#6b7280">清除</button>
             </div>
           </div>
+          <div id="tokenPanel" class="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
+            <div class="text-xs text-blue-800"><span id="tokenStatus">🔒 目前未保存 Token</span></div>
+            <button id="clearToken" class="btn text-xs py-1 px-2 mt-2 hidden" style="background:#ef4444">🗑️ 清除已保存的 Token</button>
+          </div>
         </div>
 
         <div>
@@ -108,6 +117,7 @@
 
     // ===== DOM =====
     const apiKeyInput = document.getElementById('apiKey');
+    const rememberToken = document.getElementById('rememberToken');
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
     const analyzeBtn = document.getElementById('analyzeBtn');
@@ -125,6 +135,9 @@
     const responsePreview = document.getElementById('responsePreview');
     const copyCurl = document.getElementById('copyCurl');
     const clearDebug = document.getElementById('clearDebug');
+    const tokenPanel = document.getElementById('tokenPanel');
+    const tokenStatus = document.getElementById('tokenStatus');
+    const clearToken = document.getElementById('clearToken');
 
     let selectedFile = null;
     let lastBase64 = null;
@@ -134,6 +147,36 @@
       return s.trim().replace(/\s+/g, '');
     }
     apiKeyInput.addEventListener('input', (e)=>{ e.target.value = cleanToken(e.target.value); });
+
+    // ===== 初始化：從 localStorage 讀取已保存的 Token =====
+    function loadSavedToken(){
+      const saved = localStorage.getItem('github_token');
+      if(saved){
+        apiKeyInput.value = saved;
+        rememberToken.checked = true;
+        tokenStatus.textContent = '✅ 已自動讀取保存的 Token';
+        clearToken.classList.remove('hidden');
+      } else {
+        tokenStatus.textContent = '🔒 目前未保存 Token';
+        clearToken.classList.add('hidden');
+      }
+    }
+    loadSavedToken();
+    
+    // ===== 清除已保存的 Token =====
+    clearToken.addEventListener('click', ()=>{
+      try{
+        localStorage.removeItem('github_token');
+        apiKeyInput.value = '';
+        rememberToken.checked = false;
+        tokenStatus.textContent = '🔒 已清除已保存的 Token';
+        clearToken.classList.add('hidden');
+        showToast('✅ Token 已從本地瀏覽器中清除', 'success');
+      }catch(e){
+        console.error('清除 Token 失敗', e);
+        showToast('❌ 清除失敗：' + e.message, 'error');
+      }
+    });
 
     // Dropzone 互動
     dropzone.addEventListener('click', ()=> fileInput.click());
@@ -391,6 +434,19 @@
         const modelText = await callVisionModel();
         if(!modelText){ showToast('未能取得模型回應', 'error'); return; }
         resultBox.textContent = modelText;
+        
+        // 如果勾選「記住我的密鑰」，則將 Token 保存到 localStorage
+        if(rememberToken.checked){
+          const token = cleanToken(apiKeyInput.value);
+          try{
+            localStorage.setItem('github_token', token);
+            showToast('✅ Token 已安全地保存到本地瀏覽器', 'success');
+          }catch(e){
+            console.warn('無法保存 Token 到 localStorage', e);
+            showToast('⚠️ 無法保存 Token：' + e.message, 'warn');
+          }
+        }
+        
         // 使用 Web Speech API 讀出
         await speak(modelText);
         showToast('已完成分析與朗讀', 'success');
