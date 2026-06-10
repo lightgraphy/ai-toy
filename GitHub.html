@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>小皮 - GitHub 視覺原型</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+    *{font-family:'Noto Sans TC',sans-serif}
+    body{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#6d28d9 100%);display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{width:100%;max-width:840px;background:rgba(255,255,255,0.98);border-radius:16px;padding:28px;box-shadow:0 30px 80px rgba(0,0,0,0.35)}
+    .dropzone{border:2px dashed #c7b8f5;border-radius:12px;padding:28px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;cursor:pointer;background:linear-gradient(180deg,rgba(199,184,245,0.06),transparent)}
+    .dropzone.dragover{background:linear-gradient(180deg,rgba(126,34,206,0.06),transparent);border-color:#7c3aed}
+    .hint{color:#374151}
+    .file-info{display:flex;align-items:center;gap:12px}
+    .thumb{max-width:120px;max-height:80px;border-radius:8px;object-fit:cover;border:1px solid #e6e6e6}
+    .toast{position:fixed;right:20px;bottom:20px;padding:12px 16px;border-radius:8px;color:white;z-index:60}
+    .btn{background:linear-gradient(90deg,#7c3aed,#4f46e5);color:white;padding:12px 18px;border-radius:10px;font-weight:700}
+    .status{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;background:#eef2ff;border:1px solid #e0e7ff;border-radius:10px;color:#3730a3}
+    .small{font-size:0.9rem}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="text-center mb-6">
+      <div class="text-3xl">🧸 小皮 - GitHub 視覺原型</div>
+      <p class="text-sm text-gray-600 mt-1">上傳學校通告圖片（JPG/PNG）或 PDF，系統會嘗試擷取內容並由小皮用廣東話朗讀。</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="md:col-span-2">
+        <label class="block mb-2 font-semibold">🔑 GitHub Token（以 ghp_ 開頭）</label>
+        <input id="apiKey" type="password" placeholder="請輸入您的 GitHub Token（或 Azure token）" class="w-full px-4 py-3 rounded-lg border border-gray-200 mb-3" autocomplete="off">
+        <p class="text-xs text-gray-500">自動清除前後空格；Token 嚴禁公開。GitHub 個人存取權杖通常以 <span class="font-medium">ghp_</span> 開頭。</p>
+
+        <div id="dropzone" class="dropzone mt-6">
+          <div class="text-center">
+            <div class="text-2xl">📎</div>
+            <div class="font-semibold mt-1">將學校通告拖放到此處或點擊上傳</div>
+            <div class="hint small">支援 JPG / PNG / PDF（初期原型建議優先上傳圖片截圖）</div>
+          </div>
+          <input id="fileInput" type="file" accept="image/*,.pdf" class="hidden">
+        </div>
+
+        <div id="fileStatus" class="mt-4 hidden">
+          <div class="file-info">
+            <img id="thumb" class="thumb hidden" src="" alt="thumb">
+            <div>
+              <div id="fileName" class="font-semibold"></div>
+              <div id="fileSize" class="text-xs text-gray-500 mt-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="pdfHint" class="mt-4 text-sm text-yellow-700 hidden">
+          初期原型可能無法完全解析 PDF 內文，請盡量上傳清晰的 JPG/PNG 圖片截圖。
+        </div>
+
+        <div class="mt-6">
+          <div class="flex items-center gap-3">
+            <button id="analyzeBtn" class="btn" disabled>🔍 分析並生成廣東話提醒</button>
+            <label class="inline-flex items-center text-sm text-gray-600">
+              <input id="mockToggle" type="checkbox" class="mr-2"> 使用模擬回應（測試用）
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="mb-4">
+          <div class="font-semibold">狀態</div>
+          <div id="statusBox" class="status mt-2 small">尚未上傳檔案</div>
+        </div>
+
+        <div class="mb-4">
+          <div class="font-semibold">小皮的提醒</div>
+          <div id="resultBox" class="mt-2 p-3 rounded-lg bg-gray-50 min-h-[80px]"></div>
+          <div id="debugPanel" class="mt-4 p-3 bg-gray-100 rounded hidden">
+            <div class="font-semibold mb-2">🔎 診斷資訊（僅供調試）</div>
+            <div class="text-xs text-gray-700 mb-2">請求 Payload：</div>
+            <pre id="requestPreview" class="text-xs bg-white p-2 rounded border overflow-auto" style="max-height:160px"></pre>
+            <div class="text-xs text-gray-700 mt-3 mb-2">回應/錯誤：</div>
+            <pre id="responsePreview" class="text-xs bg-white p-2 rounded border overflow-auto" style="max-height:160px"></pre>
+            <div class="mt-3 flex gap-2">
+              <button id="copyCurl" class="btn">複製 Curl（含 Token）</button>
+              <button id="clearDebug" class="btn" style="background:#6b7280">清除</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="font-semibold">播放狀態</div>
+          <div id="playStatus" class="mt-2 text-sm text-gray-600">尚未播放</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== 設定 =====
+    const VISION_API_URL = 'https://azure.com'; // 使用者指定 URL
+    const VISION_MODEL = 'microsoft/Phi-3.5-vision-instruct';
+
+    const systemPrompt = `你是一個香港學校日程解析專家與智能玩具熊。請仔細觀看家長上傳的這張香港學校通告、手冊或校歷表圖片，自動提取出裡面的日期、時間、功課、默書或活動資訊。然後請切換身份為一隻 6 歲小朋友的玩具熊小皮，用極其溫柔、活潑的廣東話口語（多用「啊」、「喇」、「溫書」、「返學」等香港在地詞彙），草擬一段 50 字內的今日作息與溫習提醒。`;
+
+    // ===== DOM =====
+    const apiKeyInput = document.getElementById('apiKey');
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const fileStatus = document.getElementById('fileStatus');
+    const fileNameEl = document.getElementById('fileName');
+    const fileSizeEl = document.getElementById('fileSize');
+    const thumb = document.getElementById('thumb');
+    const pdfHint = document.getElementById('pdfHint');
+    const statusBox = document.getElementById('statusBox');
+    const resultBox = document.getElementById('resultBox');
+    const playStatus = document.getElementById('playStatus');
+    const mockToggle = document.getElementById('mockToggle');
+    const debugPanel = document.getElementById('debugPanel');
+    const requestPreview = document.getElementById('requestPreview');
+    const responsePreview = document.getElementById('responsePreview');
+    const copyCurl = document.getElementById('copyCurl');
+    const clearDebug = document.getElementById('clearDebug');
+
+    let selectedFile = null;
+    let lastBase64 = null;
+
+    // 自動清除前後空格並移除中間空白
+    function cleanToken(s){
+      return s.trim().replace(/\s+/g, '');
+    }
+    apiKeyInput.addEventListener('input', (e)=>{ e.target.value = cleanToken(e.target.value); });
+
+    // Dropzone 互動
+    dropzone.addEventListener('click', ()=> fileInput.click());
+    dropzone.addEventListener('dragover', (e)=>{ e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', ()=>{ dropzone.classList.remove('dragover'); });
+    dropzone.addEventListener('drop', (e)=>{ e.preventDefault(); dropzone.classList.remove('dragover'); const f = e.dataTransfer.files[0]; if(f) handleFile(f); });
+    fileInput.addEventListener('change', (e)=>{ const f = e.target.files[0]; if(f) handleFile(f); });
+
+    function showToast(msg, type='info'){
+      const div = document.createElement('div');
+      div.className = 'toast';
+      div.style.background = type==='error'? '#ef4444': type==='success'? '#10b981':'#3b82f6';
+      div.textContent = msg;
+      document.body.appendChild(div);
+      setTimeout(()=>div.remove(),3500);
+    }
+
+    function setStatus(msg){ statusBox.textContent = msg; }
+
+    // 處理檔案（顯示、轉 Base64 或嘗試解析 PDF）
+    async function handleFile(file){
+      selectedFile = file;
+      fileStatus.classList.remove('hidden');
+      fileNameEl.textContent = file.name;
+      fileSizeEl.textContent = Math.round(file.size/1024) + ' KB';
+      thumb.classList.add('hidden');
+      analyzeBtn.disabled = true;
+      resultBox.textContent = '';
+      lastBase64 = null;
+      pdfHint.classList.add('hidden');
+      setStatus('已選擇檔案：' + file.name);
+
+      const lower = file.type.toLowerCase();
+      if(lower.startsWith('image/')){
+        // 圖片 -> Base64
+        const dataUrl = await readFileAsDataURL(file);
+        lastBase64 = dataUrl; // 包含 data:image/...;base64,
+        thumb.src = dataUrl; thumb.classList.remove('hidden');
+        analyzeBtn.disabled = false;
+        setStatus('已準備好圖片，等待分析');
+      } else if(file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')){
+        // PDF 嘗試解析（簡單）
+        setStatus('嘗試解析 PDF，如失敗會顯示提示');
+        pdfHint.classList.remove('hidden');
+        try{
+          const text = await tryExtractPdfText(file);
+          if(text && text.trim().length>20){
+            // 將提取的文字轉為簡短的 synthetic image payload? 但依要求，主要優先圖片
+            lastBase64 = null; // no image
+            resultBox.textContent = '已由 PDF 嘗試提取文字，會一併發送給模型：\n' + text.slice(0,800);
+            analyzeBtn.disabled = false;
+            setStatus('PDF 文字已提取，等待分析');
+          } else {
+            // 無法提取到足夠文字
+            lastBase64 = null;
+            analyzeBtn.disabled = false; // 允許上傳 PDF，但提示用戶
+            setStatus('PDF 可能無法解析，建議上傳圖片截圖');
+          }
+        }catch(err){
+          console.error('PDF 解析錯誤',err);
+          lastBase64 = null;
+          analyzeBtn.disabled = false;
+          setStatus('PDF 解析遇到問題，建議上傳圖片截圖');
+        }
+      } else {
+        showToast('不支援的檔案格式，請上傳 JPG/PNG 或 PDF', 'error');
+        selectedFile = null;
+        fileStatus.classList.add('hidden');
+        analyzeBtn.disabled = true;
+      }
+    }
+
+    function readFileAsDataURL(file){
+      return new Promise((resolve,reject)=>{
+        const r = new FileReader();
+        r.onload = ()=>resolve(r.result.toString());
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+    }
+
+    // 嘗試用簡單內置方法解析 PDF：使用 PDF.js（若可載入）
+    async function tryExtractPdfText(file){
+      // 先嘗試動態載入 PDF.js
+      if(!window.pdfjsLib){
+        try{
+          await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js');
+          // 指定 workerSrc（CDN）
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        }catch(e){
+          console.warn('無法載入 PDF.js', e);
+          return null;
+        }
+      }
+
+      const arrayBuf = await readFileAsArrayBuffer(file);
+      const pdf = await window.pdfjsLib.getDocument({data: arrayBuf}).promise;
+      const maxPages = Math.min(3, pdf.numPages);
+      let fullText = '';
+      for(let i=1;i<=maxPages;i++){
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const strings = content.items.map(it=>it.str);
+        fullText += strings.join(' ') + '\n';
+      }
+      return fullText;
+    }
+
+    function readFileAsArrayBuffer(file){
+      return new Promise((resolve,reject)=>{
+        const r = new FileReader();
+        r.onload = ()=>resolve(r.result);
+        r.onerror = reject;
+        r.readAsArrayBuffer(file);
+      });
+    }
+
+    function loadScript(src){
+      return new Promise((resolve,reject)=>{
+        const s = document.createElement('script'); s.src = src; s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+      });
+    }
+
+    // ===== 呼叫視覺模型 API =====
+    async function callVisionModel(){
+      const token = cleanToken(apiKeyInput.value);
+      if(!token){ showToast('請輸入 Token', 'error'); return null; }
+      // 驗證 GitHub Token 前綴（通常為 ghp_）
+      if(!token.startsWith('ghp_')){ showToast('Token 應該以 ghp_ 開頭', 'error'); return null; }
+      if(!selectedFile){ showToast('請先上傳檔案', 'error'); return null; }
+
+      setStatus('準備呼叫視覺模型...');
+      analyzeBtn.disabled = true;
+
+      // 如果使用模擬回應，直接回傳示例文字（方便在無網路或 CORS 問題時測試）
+      if (mockToggle && mockToggle.checked) {
+        setStatus('使用模擬回應模式');
+        analyzeBtn.disabled = false;
+        return '今日：3點放學，明天請帶體育衫；今日英文有默書，記得溫書啊。';
+      }
+
+      // 建立 payload
+      const messages = [];
+      messages.push({ role: 'system', content: systemPrompt });
+
+      // 如果為圖片，放入 messages content 作為 image_url 類型（包含 data URL）
+      if(lastBase64){
+        // 按使用者需求，將 Base64 放入 messages 的 content 陣列中，類型為 image_url
+        messages.push({ role: 'user', content: [{ type: 'image_url', data: lastBase64 }] });
+      } else {
+        // 若為 PDF，則嘗試提取文字並放入 user message
+        try{
+          const text = await tryExtractPdfText(selectedFile);
+          if(text && text.trim().length>0){
+            messages.push({ role: 'user', content: text });
+          } else {
+            messages.push({ role: 'user', content: '家長上傳了 PDF，但系統無法解析成文字，請以圖片截圖為主。' });
+          }
+        }catch(e){
+          messages.push({ role: 'user', content: '家長上傳了 PDF，但系統無法解析成文字，請以圖片截圖為主。' });
+        }
+      }
+
+      // 準備 fetch 請求
+      const payload = { model: VISION_MODEL, messages };
+      // 在診斷面板中顯示請求預覽
+      try{
+        if(requestPreview){ requestPreview.textContent = JSON.stringify(payload, null, 2); }
+        const resp = await fetch(VISION_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify(payload)
+        });
+
+        // 如果回應不是 ok，嘗試讀取回應文字並顯示
+        if(!resp.ok){
+          const errText = await resp.text();
+          if(responsePreview) responsePreview.textContent = `HTTP ${resp.status}\n${errText}`;
+          debugPanel.classList.remove('hidden');
+          throw new Error('API 回應錯誤：' + resp.status + ' ' + errText);
+        }
+
+        const data = await resp.json();
+        if(responsePreview) responsePreview.textContent = JSON.stringify(data, null, 2);
+        if(debugPanel) debugPanel.classList.remove('hidden');
+        // 嘗試取得模型回傳的文字（依 API 可能不同）
+        let modelText = null;
+        if(data.choices && data.choices[0] && data.choices[0].message){
+          modelText = data.choices[0].message.content;
+        } else if(data.output){
+          modelText = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
+        } else if(data.result){
+          modelText = data.result;
+        } else {
+          modelText = JSON.stringify(data);
+        }
+
+        return modelText;
+
+      }catch(err){
+        console.error('呼叫模型失敗',err);
+        // 常見 "Failed to fetch"（TypeError）通常代表網絡或 CORS 問題
+        const msg = (err && err.message) ? err.message : String(err);
+        if (msg.includes('Failed to fetch') || err instanceof TypeError) {
+          showToast('Failed to fetch：可能是網絡或 CORS 問題，請檢查伺服器允許 CORS 或使用代理。', 'error');
+          setStatus('錯誤：網絡或 CORS（Failed to fetch）。請檢查瀏覽器主控台與伺服器設定，或啟用「使用模擬回應」以測試。');
+        } else {
+          showToast('呼叫模型失敗：' + msg, 'error');
+          setStatus('呼叫模型失敗：' + msg);
+        }
+        // 顯示錯誤詳細於診斷面板
+        if(responsePreview && !responsePreview.textContent) responsePreview.textContent = msg;
+        if(debugPanel) debugPanel.classList.remove('hidden');
+        throw err;
+      } finally{
+        analyzeBtn.disabled = false;
+      }
+    }
+
+    // ===== 語音播放 =====
+    function speak(text){
+      return new Promise((resolve,reject)=>{
+        if(!window.speechSynthesis){ reject(new Error('瀏覽器不支援 speechSynthesis')); return; }
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-HK';
+        u.rate = 0.9;
+        u.onstart = ()=>{ playStatus.textContent = '播放中...'; setStatus('小皮正在用廣東話朗讀'); };
+        u.onend = ()=>{ playStatus.textContent = '播放完畢'; setStatus('完成'); resolve(); };
+        u.onerror = (e)=>{ playStatus.textContent = '播放錯誤'; setStatus('播放錯誤'); reject(e); };
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      });
+    }
+
+    // ===== 事件：按下分析按鈕 =====
+    analyzeBtn.addEventListener('click', async ()=>{
+      try{
+        setStatus('開始分析...');
+        resultBox.textContent = '';
+        const modelText = await callVisionModel();
+        if(!modelText){ showToast('未能取得模型回應', 'error'); return; }
+        resultBox.textContent = modelText;
+        // 使用 Web Speech API 讀出
+        await speak(modelText);
+        showToast('已完成分析與朗讀', 'success');
+      }catch(err){
+        console.error(err);
+        showToast(err.message || '發生錯誤', 'error');
+        setStatus('發生錯誤，請檢查 Token 與檔案');
+      }
+    });
+
+    // 複製 curl 與清除診斷面板功能
+    copyCurl.addEventListener('click', ()=>{
+      try{
+        const token = cleanToken(apiKeyInput.value) || '<TOKEN>';
+        const payload = requestPreview.textContent || '{}';
+        // 使用單引號包住 JSON，並轉義內部單引號
+        const safePayload = payload.replace(/'/g, "'\\''");
+        const curl = `curl -X POST '${VISION_API_URL}' -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' -d '${safePayload}'`;
+        navigator.clipboard.writeText(curl).then(()=> showToast('已複製 Curl 指令到剪貼簿', 'success'));
+      }catch(e){
+        showToast('無法複製 Curl：' + e.message, 'error');
+      }
+    });
+
+    clearDebug.addEventListener('click', ()=>{
+      if(requestPreview) requestPreview.textContent = '';
+      if(responsePreview) responsePreview.textContent = '';
+      if(debugPanel) debugPanel.classList.add('hidden');
+    });
+
+    // ===== 監控 selectedFile 狀態，啟用按鈕 =====
+    // 已在 handleFile 中控制 analyzeBtn.disabled
+
+  </script>
+</body>
+</html>
