@@ -39,7 +39,10 @@
           </label>
         </div>
         <p class="text-xs text-gray-500"><span class="text-red-600 font-medium">⚠️ 保護密鑰，嚴禁公開。勿在共享設備上勾選「記住我的密鑰」。</span></p>
-
+        <div id="tokenPanel" class="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
+          <div class="text-xs text-blue-800"><span id="tokenStatus">🔒 目前未保存 Token</span></div>
+          <button id="clearToken" class="btn text-xs py-1 px-2 mt-2 hidden" style="background:#ef4444">🗑️ 清除已保存的 Token</button>
+        </div>
         <div id="dropzone" class="dropzone mt-6">
           <div class="text-center">
             <div class="text-2xl">📎</div>
@@ -82,7 +85,7 @@
         <div class="mb-4">
           <div class="font-semibold">小昕豬嘅提醒</div>
           <div id="resultBox" class="mt-2 p-3 rounded-lg bg-gray-50 min-h-[80px]"></div>
-          <div id="debugPanel" class="mt-4 p-3 bg-gray-100 rounded hidden">
+          <div id="debugPanel" class="mt-4 p-3 bg-gray-100 rounded hidden" style="display: none;">
             <div class="font-semibold mb-2">🔎 診斷資訊（僅供調試）</div>
             <div class="text-xs text-gray-700 mb-2">請求 Payload：</div>
             <pre id="requestPreview" class="text-xs bg-white p-2 rounded border overflow-auto" style="max-height:160px"></pre>
@@ -93,15 +96,16 @@
               <button id="clearDebug" class="btn" style="background:#6b7280">清除</button>
             </div>
           </div>
-          <div id="tokenPanel" class="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
-            <div class="text-xs text-blue-800"><span id="tokenStatus">🔒 目前未保存 Token</span></div>
-            <button id="clearToken" class="btn text-xs py-1 px-2 mt-2 hidden" style="background:#ef4444">🗑️ 清除已保存的 Token</button>
-          </div>
         </div>
 
         <div>
           <div class="font-semibold">播放狀態</div>
           <div id="playStatus" class="mt-2 text-sm text-gray-600">尚未播放</div>
+          <div id="playControls" class="mt-3 flex items-center gap-2">
+            <button id="pauseBtn" class="btn text-sm" style="width:auto;padding:8px 12px;" disabled>暫停</button>
+            <button id="stopBtn" class="btn text-sm" style="width:auto;padding:8px 12px;background:#ef4444" disabled>停止</button>
+            <button id="replayBtn" class="btn text-sm" style="width:auto;padding:8px 12px;" disabled>重播</button>
+          </div>
           <div class="mt-3 text-sm text-red-700 font-semibold">📱 iPhone 用戶提示：請確保手機側邊的靜音開關已關閉，並調高音量，否則會沒有聲音喔！</div>
         </div>
       </div>
@@ -131,6 +135,9 @@
     const statusBox = document.getElementById('statusBox');
     const resultBox = document.getElementById('resultBox');
     const playStatus = document.getElementById('playStatus');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const replayBtn = document.getElementById('replayBtn');
     const mockToggle = document.getElementById('mockToggle');
     const debugPanel = document.getElementById('debugPanel');
     const requestPreview = document.getElementById('requestPreview');
@@ -457,23 +464,99 @@
     }
 
     // ===== 語音播放 =====
-    function speak(text){
+    // Playback management (supports pause / stop / replay)
+    let currentUtterance = null;
+    let currentResolve = null;
+    let currentReject = null;
+    let lastSpokenText = '';
+
+    function playText(text){
       return new Promise((resolve,reject)=>{
         if(!window.speechSynthesis){ reject(new Error('瀏覽器不支援 speechSynthesis')); return; }
+        if(!text){ resolve(); return; }
+        // cancel any previous playback
+        try{ window.speechSynthesis.cancel(); }catch(e){}
+
         const u = new SpeechSynthesisUtterance(text);
+        currentUtterance = u;
+        currentResolve = resolve;
+        currentReject = reject;
+        lastSpokenText = text;
+
         u.lang = 'zh-HK';
         u.pitch = 1.35;
         u.rate = 1.08;
         u.volume = 0.98;
         const voice = preferredVoice || choosePreferredCantoneseVoice(window.speechSynthesis.getVoices() || []);
         if(voice) u.voice = voice;
-        u.onstart = ()=>{ playStatus.textContent = '播放中...'; setStatus('小昕豬正在用活潑童音朗讀'); };
-        u.onend = ()=>{ playStatus.textContent = '播放完畢'; setStatus('完成'); resolve(); };
-        u.onerror = (e)=>{ playStatus.textContent = '播放錯誤'; setStatus('播放錯誤'); reject(e); };
-        window.speechSynthesis.cancel();
+
+        u.onstart = ()=>{
+          playStatus.textContent = '播放中...';
+          setStatus('小昕豬正在用活潑童音朗讀');
+          pauseBtn.textContent = '暫停';
+          pauseBtn.disabled = false;
+          stopBtn.disabled = false;
+          replayBtn.disabled = false;
+        };
+
+        u.onend = ()=>{
+          playStatus.textContent = '播放完畢';
+          setStatus('完成');
+          pauseBtn.disabled = true;
+          stopBtn.disabled = true;
+          // keep replay enabled
+          resolve();
+          currentUtterance = null;
+        };
+
+        u.onerror = (e)=>{
+          playStatus.textContent = '播放錯誤';
+          setStatus('播放錯誤');
+          pauseBtn.disabled = true;
+          stopBtn.disabled = true;
+          reject(e);
+          currentUtterance = null;
+        };
+
         window.speechSynthesis.speak(u);
       });
     }
+
+    // backward-compatible alias
+    function speak(text){ return playText(text); }
+
+    // Control handlers
+    pauseBtn.addEventListener('click', ()=>{
+      if(!window.speechSynthesis) return;
+      if(window.speechSynthesis.paused){
+        window.speechSynthesis.resume();
+        playStatus.textContent = '播放中...';
+        pauseBtn.textContent = '暫停';
+      } else if(window.speechSynthesis.speaking){
+        window.speechSynthesis.pause();
+        playStatus.textContent = '已暫停';
+        pauseBtn.textContent = '繼續';
+      }
+    });
+
+    stopBtn.addEventListener('click', ()=>{
+      if(!window.speechSynthesis) return;
+      try{ window.speechSynthesis.cancel(); }catch(e){}
+      playStatus.textContent = '已停止';
+      setStatus('已停止播放');
+      pauseBtn.disabled = true;
+      stopBtn.disabled = true;
+    });
+
+    replayBtn.addEventListener('click', async ()=>{
+      if(!lastSpokenText) return;
+      try{
+        await playText(lastSpokenText);
+        showToast('重播完成', 'success');
+      }catch(e){
+        showToast('重播失敗：' + (e && e.message ? e.message : String(e)), 'error');
+      }
+    });
 
     // ===== 事件：按下分析按鈕 =====
     analyzeBtn.addEventListener('click', async ()=>{
@@ -497,8 +580,9 @@
           }
         }
         
-        // 使用 Web Speech API 讀出
-        await speak(modelText);
+        // 使用 Web Speech API 讀出（支援暫停/停止/重播）
+        lastSpokenText = modelText;
+        await playText(modelText);
         showToast('已完成分析與朗讀', 'success');
       }catch(err){
         console.error(err);
