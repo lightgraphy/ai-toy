@@ -19,6 +19,7 @@
     .btn{background:linear-gradient(90deg,#7c3aed,#4f46e5);color:white;padding:12px 18px;border-radius:10px;font-weight:700}
     .status{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;background:#eef2ff;border:1px solid #e0e7ff;border-radius:10px;color:#3730a3}
     .small{font-size:0.9rem}
+    input, textarea{min-width:0;max-width:100%;}
   </style>
 </head>
 <body>
@@ -31,7 +32,7 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div class="md:col-span-2">
         <label class="block mb-2 font-semibold">🔑 GitHub Token（以 ghp_ 開頭）</label>
-        <div class="flex gap-2 mb-3 items-end">
+        <div class="flex flex-wrap gap-2 mb-3 items-end">
           <input id="apiKey" type="password" placeholder="請輸入您的 GitHub Token（或 Azure token）" class="flex-1 px-4 py-3 rounded-lg border border-gray-200" autocomplete="off">
           <label class="inline-flex items-center text-xs text-gray-600 whitespace-nowrap">
             <input id="rememberToken" type="checkbox" class="mr-2"> 記住我的密鑰
