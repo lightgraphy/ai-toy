@@ -32,7 +32,7 @@
       <div class="md:col-span-2">
         <label class="block mb-2 font-semibold">🔑 GitHub Token（以 ghp_ 開頭）</label>
         <input id="apiKey" type="password" placeholder="請輸入您的 GitHub Token（或 Azure token）" class="w-full px-4 py-3 rounded-lg border border-gray-200 mb-3" autocomplete="off">
-        <p class="text-xs text-gray-500">自動清除前後空格；Token 嚴禁公開。GitHub 個人存取權杖通常以 <span class="font-medium">ghp_</span> 開頭。</p>
+        <p class="text-xs text-gray-500">自動清除前後空格；Token 嚴禁公開。GitHub 個人存取權杖通常以 <span class="font-medium">ghp_</span> 開頭。API 端點已預設為 Azure Models 地址。</p>
 
         <div id="dropzone" class="dropzone mt-6">
           <div class="text-center">
@@ -99,8 +99,10 @@
 
   <script>
     // ===== 設定 =====
-    const VISION_API_URL = 'https://azure.com'; // 使用者指定 URL
-    const VISION_MODEL = 'microsoft/Phi-3.5-vision-instruct';
+    // GitHub Models API 端點（需要替換為實際的 Azure 模型推理端點）
+    // 例如：https://models.inference.ai.azure.com/chat/completions
+    const VISION_API_URL = 'https://models.inference.ai.azure.com/chat/completions';
+    const VISION_MODEL = 'Llama-3.2-11b-Vision-Instruct';
 
     const systemPrompt = `你是一個香港學校日程解析專家與智能玩具熊。請仔細觀看家長上傳的這張香港學校通告、手冊或校歷表圖片，自動提取出裡面的日期、時間、功課、默書或活動資訊。然後請切換身份為一隻 6 歲小朋友的玩具熊小皮，用極其溫柔、活潑的廣東話口語（多用「啊」、「喇」、「溫書」、「返學」等香港在地詞彙），草擬一段 50 字內的今日作息與溫習提醒。`;
 
@@ -279,8 +281,20 @@
 
       // 如果為圖片，放入 messages content 作為 image_url 類型（包含 data URL）
       if(lastBase64){
-        // 按使用者需求，將 Base64 放入 messages 的 content 陣列中，類型為 image_url
-        messages.push({ role: 'user', content: [{ type: 'image_url', data: lastBase64 }] });
+        // 按標準 OpenAI Vision API 規範，將分析請求與 Base64 圖片放入 content 陣列
+        messages.push({ 
+          role: 'user', 
+          content: [
+            { 
+              type: 'text', 
+              text: '請幫我分析這張香港學校通告圖片，提取當中的重要資訊與時間表。'
+            },
+            { 
+              type: 'image_url', 
+              image_url: { url: lastBase64 }
+            }
+          ] 
+        });
       } else {
         // 若為 PDF，則嘗試提取文字並放入 user message
         try{
